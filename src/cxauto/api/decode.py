@@ -69,7 +69,7 @@ def clean_chapter_title(raw: str) -> str:
     原始文本形如 ``1.1 国内外传统文化理论 1 1个待完成任务点``，去掉任务点计数等杂质。
     """
     text = raw.split("待完成任务点")[0]
-    text = re.sub(r"[\s\d]+$", "", text)
+    text = re.sub(r"[\s\d个]*$", "", text)
     for marker in ("已完成", "任务点未解锁"):
         text = text.replace(marker, "")
     return re.sub(r"\s+", " ", text).strip()

@@ -94,6 +94,23 @@ class Dashboard:
     def elapsed_seconds(self) -> int:
         return int(time.monotonic() - self.started_at)
 
+    def status_line(self) -> str:
+        """单行文字进度（非动画环境下的降级输出）。"""
+        with self._lock:
+            parts = [
+                f"工位{s.slot}: {s.title or '待补位'}"
+                + (
+                    f" {_fmt_seconds(s.play_seconds)}/{_fmt_seconds(s.total_seconds)}"
+                    if s.total_seconds
+                    else ""
+                )
+                for s in self.slots
+            ]
+            parts.append(
+                f"已完成{self.completed} 失败{self.failed} 排队{self.queue_remaining}"
+            )
+        return " | ".join(parts)
+
     def render(self):
         """渲染为 rich 可渲染对象；rich 不可用时返回 None。"""
         try:
@@ -143,20 +160,35 @@ class Dashboard:
 
 
 class DashboardLogger:
-    """rich.Live 的轻量包装：不可用时静默降级。"""
+    """rich.Live 的包装。
+
+    只有在真正的交互式终端里才启动原地动画（旧版控制台 / 重定向输出画不了，
+    会堆出一帧帧残影），否则降级：由调用方定期输出单行文字进度。
+    """
 
     def __init__(self) -> None:
+        import sys
+
         self._live = None
+        self._live_factory = None
         try:
+            from rich.console import Console
             from rich.live import Live
 
-            self._live_cls = Live
+            console = Console()
+            if sys.stdout.isatty() and not console.legacy_windows:
+                self._live_factory = lambda: Live(refresh_per_second=2, transient=False)
         except ImportError:
-            self._live_cls = None
+            pass
+
+    @property
+    def active(self) -> bool:
+        """是否处于原地动画模式。"""
+        return self._live is not None
 
     def __enter__(self):
-        if self._live_cls is not None:
-            self._live = self._live_cls(refresh_per_second=2, transient=False)
+        if self._live_factory is not None:
+            self._live = self._live_factory()
             self._live.__enter__()
         return self
 
@@ -167,3 +199,4 @@ class DashboardLogger:
     def __exit__(self, *args) -> None:
         if self._live is not None:
             self._live.__exit__(*args)
+            self._live = None

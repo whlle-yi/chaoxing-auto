@@ -135,8 +135,13 @@ class Runner:
                     pool.submit(self._slot_worker, course, job_queue, slot, dashboard)
                     for slot in range(workers)
                 ]
+                # 交互终端：原地动画面板；否则每 30s 打一行文字进度
+                last_status = 0.0
                 while not all(f.done() for f in futures):
                     panel.update(dashboard.render())
+                    if not panel.active and time.monotonic() - last_status >= 30:
+                        logger.info("进度 | {}", dashboard.status_line())
+                        last_status = time.monotonic()
                     time.sleep(0.5)
 
     def _slot_worker(self, course: Course, job_queue: queue.Queue, slot: int,

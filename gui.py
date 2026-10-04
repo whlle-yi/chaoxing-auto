@@ -31,10 +31,10 @@ CONFIG_PATH = Path(__file__).parent / "config.ini"
 def risk_level(count: int) -> tuple[str, str, str]:
     """按并行数评估被识别为脚本的风险，返回 (等级, 颜色, 说明)。仅警告，不做任何限制。"""
     if count <= 2:
-        return "低", "#2e7d32", "行为接近真人，几乎无额外风险"
+        return "低", "#2e7d32", "行为接近真人"
     if count <= 5:
-        return "中", "#ef6c00", "同一账号同时观看多个视频，有一定被识别风险"
-    return "高", "#c62828", "并行数过大，行为明显偏离真人，极易被识别为脚本"
+        return "中", "#ef6c00", "有被识别风险"
+    return "高", "#c62828", "极易被识别为脚本"
 
 
 class LogQueueSink:
@@ -107,8 +107,11 @@ class App:
         self.spin_speed.set(1.0)
         self.spin_speed.grid(row=1, column=1, sticky="e")
         # 脚本识别风险提示：只警告，不阻止
-        self.label_risk = ttk.Label(group_opt, text="", foreground="#2e7d32")
-        self.label_risk.grid(row=2, column=0, columnspan=2, sticky="w", pady=(6, 0))
+        self.label_risk = ttk.Label(
+            group_opt, text="", foreground="#2e7d32",
+            wraplength=190, justify="left",
+        )
+        self.label_risk.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(6, 0))
         self.conc_var.trace_add("write", lambda *_: self._update_risk())
         self._update_risk()
 
@@ -177,7 +180,7 @@ class App:
             count = 1
         level, color, desc = risk_level(max(1, min(MAX_CONCURRENCY, count)))
         self.label_risk.config(
-            text=f"脚本识别风险：{level} —— {desc}", foreground=color,
+            text=f"脚本识别风险：{level} · {desc}", foreground=color,
         )
 
     def on_save(self) -> None:

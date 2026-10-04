@@ -29,6 +29,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("-c", "--config", default="config.ini", help="配置文件路径（默认 config.ini）")
     parser.add_argument("--course", nargs="*", default=None, help="只刷指定课程（可多个，覆盖配置文件）")
     parser.add_argument("--speed", type=float, default=None, help="视频倍速，1.0~2.0（覆盖配置文件）")
+    parser.add_argument("--list", action="store_true", help="只列出账号下的课程，不刷课")
     parser.add_argument("--log-level", default=None, help="控制台日志级别（默认 INFO）")
     return parser.parse_args(argv)
 
@@ -50,6 +51,19 @@ def main(argv: list[str] | None = None) -> int:
 
     setup_logger(config.log_file, config.log_level)
     logger.info("cxauto 启动：账号 {}，倍速 {}x", config.username[:3] + "****", config.speed)
+
+    if args.list:
+        from cxauto.api.client import ChaoxingClient
+        from cxauto.api.course import CourseAPI
+
+        client = ChaoxingClient(config)
+        client.login()
+        courses = CourseAPI(client).get_course_list()
+        if courses:
+            print()
+            for course in courses:
+                print(f"  {course.name}  （教师: {course.teacher or '未知'}）")
+        return 0
 
     try:
         runner = Runner(config)

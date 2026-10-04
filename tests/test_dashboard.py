@@ -36,12 +36,18 @@ class TestDashboard:
         assert d.slots[0].status == "空闲"
 
     def test_render_contains_slot_info(self):
+        import io
+
+        from rich.console import Console
+
         d = Dashboard("文化传统与现代文明", total_jobs=9, slot_count=2)
         d.assign(0, "1293.flv", 8)
         d.progress(0, 120, 600)
         panel = d.render()
         assert panel is not None
-        text = str(panel)
+        console = Console(file=io.StringIO(), width=120, force_terminal=False)
+        console.print(panel)
+        text = console.file.getvalue()
         assert "1293.flv" in text
         assert "02:00 / 10:00" in text
         assert "排队中 8/9" in text

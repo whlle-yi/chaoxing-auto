@@ -319,9 +319,16 @@ class App:
         self.root.after(200, self._poll_log)
 
     def _poll_progress(self) -> None:
+        try:
+            self._poll_progress_inner()
+        except Exception:  # noqa: BLE001 —— 轮询链不能断
+            pass
+        self.root.after(500, self._poll_progress)
+
+    def _poll_progress_inner(self) -> None:
         dashboard = self.runner.dashboard if self.runner else None
         if dashboard is not None:
-            slot_nums = sorted(dashboard.slots)
+            slot_nums = dashboard.slot_ids()
             if len(slot_nums) != len(self.slot_bars):
                 self._rebuild_slots(len(slot_nums))
             for i, num in enumerate(slot_nums):
@@ -340,7 +347,6 @@ class App:
                 text=f"已完成 {dashboard.completed}  失败 {dashboard.failed}  "
                      f"排队中 {dashboard.queue_remaining}/{dashboard.total_jobs}"
             )
-        self.root.after(500, self._poll_progress)
 
     # ------------------------------------------------------------------ 帮助
 
@@ -359,6 +365,11 @@ class App:
 
 
 def main() -> None:
+    # 后台线程的未捕获异常默认打印到 stderr（pythonw 下不可见），改写进日志文件
+    def _thread_excepthook(args):
+        logger.exception("后台线程崩溃: {}", args.thread.name, exc_info=args.exc_value)
+    threading.excepthook = _thread_excepthook
+
     root = tk.Tk()
     try:
         ttk.Style().theme_use("vista")

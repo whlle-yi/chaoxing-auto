@@ -92,7 +92,7 @@ class Runner:
             self._worker_threads = [t for t in self._worker_threads if t.is_alive()]
             alive = len(self._worker_threads)
         for _ in range(count - alive):
-            self._spawn_worker(*ctx)
+            self._spawn_worker()
         logger.info("并行数调整为 {} 个工位", count)
 
     def run(self) -> Stats:
@@ -165,7 +165,6 @@ class Runner:
         for item in all_jobs:
             job_queue.put(item)
 
-        self.target_workers = min(self.target_workers, len(all_jobs))
         dashboard = Dashboard(course.name, total_jobs=len(all_jobs), slot_count=1)
         self.dashboard = dashboard
         panel = DashboardLogger() if (self.show_panel and not self.config.live_dashboard) else None
@@ -225,6 +224,13 @@ class Runner:
     def _slot_worker(self, course: Course, job_queue: queue.Queue,
                      dashboard: Dashboard, panel: DashboardLogger | None, slot: int) -> None:
         """一个工位：领任务 -> 刷 -> 歇 10s -> 领下一个，直到队列空或被裁撤。"""
+        try:
+            self._slot_worker_inner(course, job_queue, dashboard, panel, slot)
+        except Exception:  # noqa: BLE001 —— 工位崩溃必须留痕，否则无声消失
+            logger.exception("[工位{}] 发生未捕获异常，本工位退出", slot)
+
+    def _slot_worker_inner(self, course: Course, job_queue: queue.Queue,
+                           dashboard: Dashboard, panel: DashboardLogger | None, slot: int) -> None:
 
         def retire() -> None:
             with self._wlock:
@@ -261,10 +267,11 @@ class Runner:
 
             result = self._process_with_retry(course, job, on_progress)
             dashboard.release(slot, result.value)
-            panel.snapshot(dashboard.render())
+            if panel:
+                panel.snapshot(dashboard.render())
             with self._stats_lock:
                 self.stats.add(result)
-            logger.info("[工位{}] {}: {}", slot + 1, title, result.value)
+            logger.info("[工位{}] {}: {}", slot, title, result.value)
 
     # ------------------------------------------------------------------ 重试
 

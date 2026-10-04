@@ -110,6 +110,16 @@ class Dashboard:
     def elapsed_seconds(self) -> int:
         return int(time.monotonic() - self.started_at)
 
+    def slot_ids(self) -> list[int]:
+        """当前工位编号列表（线程安全快照，供 GUI 轮询）。"""
+        with self._lock:
+            return sorted(self.slots)
+
+    def slot_ids(self) -> list[int]:
+        """当前工位编号列表（线程安全快照，供 GUI 轮询）。"""
+        with self._lock:
+            return sorted(self.slots)
+
     def status_line(self) -> str:
         """单行文字进度（非动画环境下的降级输出）。"""
         with self._lock:
@@ -190,6 +200,12 @@ class DashboardLogger:
             self._console = None
 
     def snapshot(self, renderable) -> None:
-        """打印一帧面板快照（事件触发，低频）。"""
+        """打印一帧面板快照（事件触发，低频）。无可用 stdout（如 pythonw）时跳过。"""
+        import sys
+        if sys.stdout is None:
+            return
         if self._console is not None and renderable is not None:
-            self._console.print(renderable)
+            try:
+                self._console.print(renderable)
+            except Exception as e:  # noqa: BLE001 —— 展示层崩溃绝不能拖垮刷课线程
+                logger.debug("面板快照输出失败: {}", e)

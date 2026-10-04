@@ -50,7 +50,7 @@ class Stats:
 class Runner:
     """刷课主流程：串行收集任务、多工位并行消化。"""
 
-    def __init__(self, config: Config) -> None:
+    def __init__(self, config: Config, show_panel: bool = True) -> None:
         self.config = config
         self.client = ChaoxingClient(config)
         self.course_api = CourseAPI(self.client)
@@ -61,6 +61,8 @@ class Runner:
         self._stats_lock = threading.Lock()
         # 当前进度面板引用（GUI 轮询显示用）
         self.dashboard: Dashboard | None = None
+        # show_panel=False：终端侧不打印面板快照（GUI 模式由界面承担进度展示）
+        self.show_panel = show_panel
 
     def run(self) -> Stats:
         """入口：登录并依次处理所有目标课程。"""
@@ -134,7 +136,7 @@ class Runner:
 
         dashboard = Dashboard(course.name, total_jobs=len(all_jobs), slot_count=workers)
         self.dashboard = dashboard
-        panel = None if self.config.live_dashboard else DashboardLogger()
+        panel = DashboardLogger() if (self.show_panel and not self.config.live_dashboard) else None
         if panel:
             panel.snapshot(dashboard.render())
 

@@ -240,7 +240,7 @@ class App:
 
         def work():
             try:
-                runner = Runner(config)
+                runner = Runner(config, show_panel=False)  # 进度展示由界面承担
                 self.runner = runner
                 runner.run()
                 stats = runner.stats

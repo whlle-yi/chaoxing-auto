@@ -1,7 +1,4 @@
 @echo off
-rem cxauto 图形界面启动器：双击运行
-chcp 65001 >nul
-set PYTHONUTF8=1
+rem cxauto 图形界面启动器：双击运行（无控制台黑窗口，进度全在界面里）
 cd /d %~dp0
-python gui.py
-if errorlevel 1 pause
+start "" pythonw gui.py

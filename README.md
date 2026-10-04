@@ -20,20 +20,35 @@
 ## 快速开始
 
 ```bash
-# 1. 安装依赖
+# 1. 安装依赖（Python 3.10+）
 pip install -r requirements.txt
 
 # 2. 创建配置
 cp config.example.ini config.ini
 #    编辑 config.ini，填写 username / password
 
-# 3. 运行
-python main.py                 # 刷全部课程
+# 3. 查看账号下的课程（同时验证登录）
+python main.py --list
+
+# 4. 开始刷课
 python main.py --course 高等数学 大学英语   # 只刷指定课程
-python main.py --speed 1.5     # 指定视频倍速（1.0 ~ 2.0）
+python main.py --concurrency 2             # 刷全部课程，2 个视频同时刷
 ```
 
 可选：`pip install ddddocr` 以启用风控验证码自动识别。
+
+### 常用参数
+
+| 命令 | 作用 |
+|---|---|
+| `--list` | 只列出课程，不刷课 |
+| `--course 课程名1 课程名2` | 只刷指定课程（支持子串匹配） |
+| `--concurrency 2` | 同时刷几个视频（同一账号不建议超过 3） |
+| `--speed 1.5` | 视频倍速，1.0~2.0 |
+| `--live` | 原地动画进度面板（默认为事件快照模式，任何终端不乱屏） |
+| `-c myconfig.ini` | 使用其他配置文件 |
+
+任务完成后统计成功/失败明细；中途 `Ctrl+C` 或关机都不影响——进度保存在服务端，重跑自动断点续刷，已完成的任务点自动跳过。
 
 ## 配置说明
 
@@ -42,7 +57,10 @@ python main.py --speed 1.5     # 指定视频倍速（1.0 ~ 2.0）
 | 配置项 | 说明 | 默认 |
 |---|---|---|
 | `course_list` | 只刷指定课程，逗号分隔；留空刷全部 | 空 |
+| `job_types` | 要自动完成的任务类型，**默认只刷视频**，文档/阅读不碰 | video |
 | `speed` | 视频倍速，**上限 2.0**（超速必触发风控） | 1.0 |
+| `concurrency` | 并行工位数（同时刷几个视频），建议 ≤3 | 1 |
+| `slot_gap` | 一个视频刷完后等几秒再取下一个 | 10 |
 | `max_retries` | 任务点失败重试次数 | 3 |
 | `notopen_action` | 章节未开放时 `skip` / `stop` | skip |
 | `cookie_file` | 登录态持久化文件 | cookies.txt |
@@ -67,10 +85,11 @@ chaoxing-auto/
 │   ├── core/
 │   │   ├── config.py        # 配置加载
 │   │   ├── models.py        # Account/Course/Chapter/Job 数据模型
-│   │   ├── runner.py        # 任务调度与重试
+│   │   ├── runner.py        # 工位制任务调度与重试
+│   │   ├── dashboard.py     # 实时进度面板
 │   │   └── ratelimiter.py   # 线程安全限速器
 │   └── utils/logger.py      # loguru 日志配置
-└── tests/                   # 单元测试（pytest，23 个用例）
+└── tests/                   # 单元测试（pytest）
 ```
 
 ## 设计要点

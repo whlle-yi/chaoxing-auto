@@ -54,11 +54,11 @@ class Runner:
         self.config = config
         self.client = ChaoxingClient(config)
         self.course_api = CourseAPI(self.client)
+        # 停止信号：GUI 的停止按钮置位后，工位在安全点（心跳间隙）退出
+        self.stop_event = threading.Event()
         self.study_api = StudyAPI(self.client, speed=config.speed, stop_event=self.stop_event)
         self.stats = Stats()
         self._stats_lock = threading.Lock()
-        # 停止信号：GUI 的停止按钮置位后，工位在安全点（心跳间隙）退出
-        self.stop_event = threading.Event()
         # 当前进度面板引用（GUI 轮询显示用）
         self.dashboard: Dashboard | None = None
 

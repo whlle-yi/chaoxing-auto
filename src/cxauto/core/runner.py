@@ -19,7 +19,7 @@ from loguru import logger
 from ..api.client import ChaoxingClient
 from ..api.course import CourseAPI
 from ..api.study import StudyAPI, StudyResult
-from ..core.config import Config
+from ..core.config import MAX_CONCURRENCY, Config
 from ..core.models import Chapter, Course, Job
 from .dashboard import Dashboard, DashboardLogger
 
@@ -63,7 +63,7 @@ class Runner:
         # show_panel=False：终端侧不打印面板快照（GUI 模式由界面承担进度展示）
         self.show_panel = show_panel
         # 动态并行：工位数可在运行中通过 set_concurrency 调整（上限 3）
-        self.target_workers = max(1, min(3, config.concurrency))
+        self.target_workers = max(1, min(MAX_CONCURRENCY, config.concurrency))
         self._worker_threads: list[threading.Thread] = []
         self._wlock = threading.Lock()
         self._next_slot = 0
@@ -83,7 +83,7 @@ class Runner:
 
         调大：立即补开新工位；调小：多出的工位在刷完当前视频后自行退出。
         """
-        count = max(1, min(3, count))
+        count = max(1, min(MAX_CONCURRENCY, count))
         self.target_workers = count
         ctx = self._run_ctx
         if ctx is None:

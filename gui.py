@@ -22,7 +22,7 @@ sys.path.insert(0, str(Path(__file__).parent / "src"))
 
 from loguru import logger  # noqa: E402
 
-from cxauto.core.config import Config  # noqa: E402
+from cxauto.core.config import MAX_CONCURRENCY, Config  # noqa: E402
 from cxauto.core.runner import Runner  # noqa: E402
 
 CONFIG_PATH = Path(__file__).parent / "config.ini"
@@ -90,7 +90,7 @@ class App:
         ttk.Label(group_opt, text="同时刷几个视频").grid(row=0, column=0, sticky="w")
         self.conc_var = tk.StringVar(value="1")
         self.spin_conc = ttk.Spinbox(
-            group_opt, from_=1, to=3, width=5, textvariable=self.conc_var,
+            group_opt, from_=1, to=MAX_CONCURRENCY, width=5, textvariable=self.conc_var,
         )
         self.spin_conc.grid(row=0, column=1, sticky="e", pady=(2, 4))
         ttk.Label(group_opt, text="视频倍速 (1.0~2.0)").grid(row=1, column=0, sticky="w")
@@ -195,7 +195,7 @@ class App:
         password = self.entry_pass.get().strip()
         if not username or not password:
             raise ValueError("请先填写账号和密码")
-        concurrency = max(1, min(3, int(float(self.conc_var.get()))))
+        concurrency = max(1, min(MAX_CONCURRENCY, int(float(self.conc_var.get()))))
         speed = min(2.0, max(1.0, float(self.spin_speed.get())))
 
         config = Config(

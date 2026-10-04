@@ -8,6 +8,9 @@ from pathlib import Path
 
 CONFIG_SECTION = "common"
 
+# 并行工位数硬性上限：同一账号的并发上限，所有入口（ini/CLI/GUI）统一引用
+MAX_CONCURRENCY = 10
+
 
 @dataclass
 class Config:
@@ -47,8 +50,8 @@ class Config:
     def __post_init__(self) -> None:
         # 官方前端播放器最多 2 倍速，超速上报极易触发风控
         self.speed = min(2.0, max(1.0, self.speed))
-        # 并行工位数硬性上限 3：同一账号更高并发会显著提高风控风险
-        self.concurrency = min(3, max(1, self.concurrency))
+        # 并行工位数钳制到 [1, MAX_CONCURRENCY]：并发越高风控风险越大
+        self.concurrency = min(MAX_CONCURRENCY, max(1, self.concurrency))
 
     @classmethod
     def from_ini(cls, path: str | Path) -> "Config":

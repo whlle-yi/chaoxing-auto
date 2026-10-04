@@ -159,10 +159,13 @@ class StudyAPI:
         流程：取元信息 -> 先尝试一次「直接上报看完」（isdrag=4）秒过 ->
         未过则进入心跳循环：playingTime 按 speed 倍速推进，随机 30~90s 上报一次
         （isdrag=3），**只有服务端返回 isPassed=true 才算完成**。
+
+        带 videoFaceCaptureEnc 的视频说明课程配置了人脸抓拍（抽检式）：协议中原样
+        回传服务端下发的 token。若服务端强制人脸验证则上报不会通过，任务留在原地
+        由人工处理；本工具不会伪造任何验证结果。
         """
         if job.face_capture_enc:
-            logger.warning("该视频启用人脸抓拍，无法自动完成，跳过: {}", job.title)
-            return StudyResult.UNSUPPORTED
+            logger.info("该视频配置了人脸抓拍（抽检式），按常规协议尝试: {}", job.title)
 
         try:
             status = self.get_video_status(job)

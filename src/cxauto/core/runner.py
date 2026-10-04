@@ -95,8 +95,13 @@ class Runner:
         jobs: list[tuple[Card, Job]] = []
         for card in cards:
             for job in card.attachments:
-                if not job.is_passed:
-                    jobs.append((card, job))
+                if job.is_passed:
+                    continue
+                # 只处理配置允许的任务类型（默认仅 video），其余一律不动
+                if job.type.value not in self.config.job_types:
+                    logger.debug("跳过非视频任务点 [{}]: {}", job.type.value, job.title)
+                    continue
+                jobs.append((card, job))
         if not jobs:
             logger.debug("章节 {} 无待处理任务点", chapter.title)
             return

@@ -28,6 +28,8 @@ class Config:
     username: str = ""
     password: str = ""
     course_list: list[str] = field(default_factory=list)
+    # 只处理这些类型的任务点，默认仅视频；文档/阅读等设为空串即不启用
+    job_types: list[str] = field(default_factory=lambda: ["video"])
     speed: float = 1.0
     max_retries: int = 3
     retry_interval: float = 2.0
@@ -59,10 +61,16 @@ class Config:
         course_list = [
             name.strip() for name in section.get("course_list", "").split(",") if name.strip()
         ]
+        job_types = [
+            t.strip().lower()
+            for t in section.get("job_types", "video").split(",")
+            if t.strip()
+        ]
         return cls(
             username=username,
             password=password,
             course_list=course_list,
+            job_types=job_types,
             speed=section.getfloat("speed", fallback=1.0),
             max_retries=section.getint("max_retries", fallback=3),
             retry_interval=section.getfloat("retry_interval", fallback=2.0),

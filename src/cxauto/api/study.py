@@ -125,9 +125,15 @@ class StudyAPI:
             logger.warning("视频日志上报被风控 (status={})", resp.status_code)
             return None
         try:
-            return resp.json()
+            data = resp.json()
         except ValueError:
+            logger.warning("视频日志上报返回非 JSON: {}", resp.text[:200])
             return None
+        logger.debug(
+            "视频日志上报: isdrag={} playingTime={}s -> isPassed={} (status={})",
+            isdrag, playing_time, data.get("isPassed"), data.get("status"),
+        )
+        return data
 
     def _rt_value(self, job: Job) -> str:
         """推断上报的 rt 参数：优先 property.rt，其次 otherInfo 的 rt_ 标记。"""

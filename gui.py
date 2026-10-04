@@ -28,6 +28,15 @@ from cxauto.core.runner import Runner  # noqa: E402
 CONFIG_PATH = Path(__file__).parent / "config.ini"
 
 
+def risk_level(count: int) -> tuple[str, str, str]:
+    """按并行数评估被识别为脚本的风险，返回 (等级, 颜色, 说明)。仅警告，不做任何限制。"""
+    if count <= 2:
+        return "低", "#2e7d32", "行为接近真人，几乎无额外风险"
+    if count <= 5:
+        return "中", "#ef6c00", "同一账号同时观看多个视频，有一定被识别风险"
+    return "高", "#c62828", "并行数过大，行为明显偏离真人，极易被识别为脚本"
+
+
 class LogQueueSink:
     """把 loguru 日志转发到队列，供 GUI 线程安全地取用显示。"""
 
@@ -97,6 +106,11 @@ class App:
         self.spin_speed = ttk.Spinbox(group_opt, from_=1.0, to=2.0, increment=0.5, width=5)
         self.spin_speed.set(1.0)
         self.spin_speed.grid(row=1, column=1, sticky="e")
+        # 脚本识别风险提示：只警告，不阻止
+        self.label_risk = ttk.Label(group_opt, text="", foreground="#2e7d32")
+        self.label_risk.grid(row=2, column=0, columnspan=2, sticky="w", pady=(6, 0))
+        self.conc_var.trace_add("write", lambda *_: self._update_risk())
+        self._update_risk()
 
         self.btn_save = ttk.Button(left, text="保存配置（修改后点这里才生效）", command=self.on_save)
         self.btn_save.pack(fill=tk.X, pady=(12, 4))
@@ -154,6 +168,17 @@ class App:
             bar.pack(fill=tk.X, pady=(0, 6))
             self.slot_labels.append(label)
             self.slot_bars.append(bar)
+
+    def _update_risk(self) -> None:
+        """按当前并行数刷新风险提示（纯展示，不做任何限制）。"""
+        try:
+            count = int(float(self.conc_var.get()))
+        except ValueError:
+            count = 1
+        level, color, desc = risk_level(max(1, min(MAX_CONCURRENCY, count)))
+        self.label_risk.config(
+            text=f"脚本识别风险：{level} —— {desc}", foreground=color,
+        )
 
     def on_save(self) -> None:
         """保存配置：写入 config.ini；若正在刷课，并行数/倍速立即生效。"""

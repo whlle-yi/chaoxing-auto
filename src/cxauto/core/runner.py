@@ -54,9 +54,13 @@ class Runner:
         self.config = config
         self.client = ChaoxingClient(config)
         self.course_api = CourseAPI(self.client)
-        self.study_api = StudyAPI(self.client, speed=config.speed)
+        self.study_api = StudyAPI(self.client, speed=config.speed, stop_event=self.stop_event)
         self.stats = Stats()
         self._stats_lock = threading.Lock()
+        # 停止信号：GUI 的停止按钮置位后，工位在安全点（心跳间隙）退出
+        self.stop_event = threading.Event()
+        # 当前进度面板引用（GUI 轮询显示用）
+        self.dashboard: Dashboard | None = None
 
     def run(self) -> Stats:
         """入口：登录并依次处理所有目标课程。"""
@@ -129,6 +133,7 @@ class Runner:
             job_queue.put(item)
 
         dashboard = Dashboard(course.name, total_jobs=len(all_jobs), slot_count=workers)
+        self.dashboard = dashboard
         panel = None if self.config.live_dashboard else DashboardLogger()
         if panel:
             panel.snapshot(dashboard.render())
@@ -168,7 +173,7 @@ class Runner:
                      dashboard: Dashboard, panel: DashboardLogger | None) -> None:
         """一个工位：领任务 -> 刷 -> 歇 10s -> 领下一个，直到队列空。"""
         first_job = True
-        while True:
+        while not self.stop_event.is_set():
             try:
                 chapter, job = job_queue.get_nowait()
             except queue.Empty:
@@ -200,6 +205,8 @@ class Runner:
         """单个任务点处理 + 重试。"""
         result = StudyResult.FAILED
         for attempt in range(1, self.config.max_retries + 1):
+            if self.stop_event.is_set():
+                return StudyResult.SKIPPED
             result = self.study_api.process_job(course, job, progress_cb)
             if result not in RETRYABLE_RESULTS:
                 return result

@@ -11,6 +11,7 @@ import enum
 import hashlib
 import random
 import re
+import threading
 import time
 
 from loguru import logger
@@ -64,9 +65,11 @@ def knowledge_id_from_otherinfo(otherinfo: str) -> str:
 class StudyAPI:
     """任务点完成逻辑。"""
 
-    def __init__(self, client: ChaoxingClient, speed: float = 1.0) -> None:
+    def __init__(self, client: ChaoxingClient, speed: float = 1.0,
+                 stop_event: threading.Event | None = None) -> None:
         self.client = client
         self.speed = speed
+        self.stop_event = stop_event or threading.Event()
         # 视频日志上报对频率极敏感（极易卡验证码），限速 2s + 抖动
         self._log_limiter = RateLimiter(interval=2.0, jitter=2.0)
         self._captcha = CaptchaSolver(client)
@@ -209,6 +212,9 @@ class StudyAPI:
             if progress_cb:
                 progress_cb(int(play_time), duration)
             while not finished:
+                if self.stop_event.is_set():
+                    logger.info("收到停止信号，视频任务中断: {}", job.title or job.objectid)
+                    return StudyResult.SKIPPED
                 if play_time < duration:
                     time.sleep(1)
                     now = time.time()

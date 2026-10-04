@@ -62,6 +62,13 @@ notopen_action = stop
         with pytest.raises(ValueError):
             Config.from_ini(path)
 
+    def test_concurrency_default_and_parse(self, tmp_path):
+        path = self._write(tmp_path, "[common]\nusername=u\npassword=p\nconcurrency=3\n")
+        config = Config.from_ini(path)
+        assert config.concurrency == 3
+        path2 = self._write(tmp_path, "[common]\nusername=u\npassword=p\n")
+        assert Config.from_ini(path2).concurrency == 1  # 默认串行
+
     def test_missing_file_raises(self, tmp_path):
         with pytest.raises(FileNotFoundError):
             Config.from_ini(tmp_path / "nope.ini")

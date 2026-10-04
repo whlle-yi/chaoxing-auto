@@ -1,8 +1,10 @@
-"""任务调度：登录 -> 课程 -> 章节 -> 任务点，串行推进并带重试。"""
+"""任务调度：登录 -> 课程 -> 章节 -> 任务点，支持多线程并行刷视频。"""
 
 from __future__ import annotations
 
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
 from loguru import logger
@@ -46,6 +48,7 @@ class Runner:
         self.course_api = CourseAPI(self.client)
         self.study_api = StudyAPI(self.client, speed=config.speed)
         self.stats = Stats()
+        self._stats_lock = threading.Lock()
 
     def run(self) -> Stats:
         """入口：登录并依次处理所有目标课程。"""
@@ -80,14 +83,31 @@ class Runner:
         ]
         logger.info("待处理章节 {}/{}", len(pending), len(chapters))
 
-        for ch in pending:
-            if ch.need_unlock:
-                if self.config.notopen_action == "stop":
-                    logger.info("章节 {} 未开放，按配置停止本课程", ch.index)
-                    return
-                logger.debug("章节 {} 未开放，跳过", ch.index)
-                continue
-            self._run_chapter(course, ch)
+        workers = max(1, min(self.config.concurrency, len(pending) or 1))
+        if workers > 1:
+            logger.info("并行模式：{} 个线程同时刷", workers)
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                # 章节级并行：每个线程内章节的任务点仍串行，保持单流节律
+                list(pool.map(lambda ch: self._run_chapter_guarded(course, ch), pending))
+        else:
+            for ch in pending:
+                if ch.need_unlock:
+                    if self.config.notopen_action == "stop":
+                        logger.info("章节 {} 未开放，按配置停止本课程", ch.index)
+                        return
+                    logger.debug("章节 {} 未开放，跳过", ch.index)
+                    continue
+                self._run_chapter(course, ch)
+
+    def _run_chapter_guarded(self, course: Course, chapter: Chapter) -> None:
+        """并行模式下的章节处理入口：未开放判断 + 异常隔离。"""
+        if chapter.need_unlock:
+            logger.debug("章节 {} 未开放，跳过", chapter.index)
+            return
+        try:
+            self._run_chapter(course, chapter)
+        except Exception as e:  # noqa: BLE001 —— 单章节失败不影响其他线程
+            logger.exception("章节 {} 处理异常: {}", chapter.title, e)
 
     def _run_chapter(self, course: Course, chapter: Chapter) -> None:
         """处理一个章节：拉卡片 -> 逐个处理任务点（带重试）。"""
@@ -107,10 +127,11 @@ class Runner:
             return
 
         desc = f"课程[{course.name}] 章节{chapter.index}"
-        with tqdm(total=len(jobs), desc=desc, unit="任务", leave=False) as bar:
+        with tqdm(total=len(jobs), desc=desc, unit="任务", leave=False, position=chapter.index % 10) as bar:
             for card, job in jobs:
                 result = self._process_with_retry(course, job)
-                self.stats.add(result)
+                with self._stats_lock:
+                    self.stats.add(result)
                 label = (job.title or job.objectid or job.jobid)[:24]
                 bar.set_postfix_str(f"{label} -> {result.value}")
                 bar.update(1)

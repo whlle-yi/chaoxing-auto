@@ -29,6 +29,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("-c", "--config", default="config.ini", help="配置文件路径（默认 config.ini）")
     parser.add_argument("--course", nargs="*", default=None, help="只刷指定课程（可多个，覆盖配置文件）")
     parser.add_argument("--speed", type=float, default=None, help="视频倍速，1.0~2.0（覆盖配置文件）")
+    parser.add_argument("--concurrency", type=int, default=None, help="并行线程数，同时刷几个视频（覆盖配置文件）")
     parser.add_argument("--list", action="store_true", help="只列出账号下的课程，不刷课")
     parser.add_argument("--log-level", default=None, help="控制台日志级别（默认 INFO）")
     return parser.parse_args(argv)
@@ -46,6 +47,8 @@ def main(argv: list[str] | None = None) -> int:
         config.course_list = args.course
     if args.speed is not None:
         config.speed = args.speed
+    if args.concurrency is not None:
+        config.concurrency = args.concurrency
     if args.log_level:
         config.log_level = args.log_level.upper()
 

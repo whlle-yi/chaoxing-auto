@@ -34,6 +34,8 @@ class Config:
     max_retries: int = 3
     retry_interval: float = 2.0
     notopen_action: str = "skip"
+    # 并行刷课的线程数（同时刷几个视频）。同一账号不建议超过 3
+    concurrency: int = 1
     cookie_file: Path = Path("cookies.txt")
     log_file: Path = Path("logs/cxauto.log")
     log_level: str = "INFO"
@@ -75,6 +77,7 @@ class Config:
             max_retries=section.getint("max_retries", fallback=3),
             retry_interval=section.getfloat("retry_interval", fallback=2.0),
             notopen_action=section.get("notopen_action", fallback="skip").strip().lower(),
+            concurrency=section.getint("concurrency", fallback=1),
             cookie_file=Path(section.get("cookie_file", fallback="cookies.txt").strip()),
             log_file=Path(section.get("log_file", fallback="logs/cxauto.log").strip()),
             log_level=section.get("log_level", fallback="INFO").strip().upper(),

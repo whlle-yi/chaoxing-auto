@@ -153,7 +153,7 @@ class StudyAPI:
                 return "0.9" if m.group(1) == "d" else m.group(1)
         return "0.9"
 
-    def study_video(self, course: Course, job: Job) -> StudyResult:
+    def study_video(self, course: Course, job: Job, progress_cb=None) -> StudyResult:
         """完成一个视频/音频任务点。
 
         流程：取元信息 -> 先尝试一次「直接上报看完」（isdrag=4）秒过 ->
@@ -206,12 +206,16 @@ class StudyAPI:
             )
             finished = False
             final_misses = 0  # 播放到结尾后服务端仍未通过的重试次数
+            if progress_cb:
+                progress_cb(int(play_time), duration)
             while not finished:
                 if play_time < duration:
                     time.sleep(1)
                     now = time.time()
                     play_time = min(duration, play_time + (now - last_iter) * self.speed)
                     last_iter = now
+                    if progress_cb:
+                        progress_cb(int(play_time), duration)
                     # 未到心跳间隔且未播完则继续等待
                     if play_time - last_log_time < wait_time and play_time < duration:
                         continue
@@ -306,15 +310,18 @@ class StudyAPI:
 
     # ------------------------------------------------------------------ 分发
 
-    def process_job(self, course: Course, job: Job) -> StudyResult:
-        """按任务类型分发。已完成的任务点直接跳过。"""
+    def process_job(self, course: Course, job: Job, progress_cb=None) -> StudyResult:
+        """按任务类型分发。已完成的任务点直接跳过。
+
+        progress_cb(play_seconds, total_seconds)：视频播放进度回报（面板用）。
+        """
         if job.is_passed:
             return StudyResult.SKIPPED
         if not job.jobid or not job.objectid:
             logger.debug("任务点缺少 jobid/objectid，跳过: {}", job)
             return StudyResult.SKIPPED
         if job.type.value == "video":
-            return self.study_video(course, job)
+            return self.study_video(course, job, progress_cb)
         if job.type.value == "document":
             return self.study_document(course, job)
         if job.type.value == "read":

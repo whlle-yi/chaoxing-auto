@@ -16,13 +16,13 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
 from loguru import logger
-from tqdm import tqdm
 
 from ..api.client import ChaoxingClient
 from ..api.course import CourseAPI
 from ..api.study import StudyAPI, StudyResult
 from ..core.config import Config
 from ..core.models import Chapter, Course, Job
+from .dashboard import Dashboard, DashboardLogger
 
 RETRYABLE_RESULTS = (StudyResult.FAILED, StudyResult.FORBIDDEN)
 
@@ -123,24 +123,24 @@ class Runner:
             len(all_jobs), workers, self.config.slot_gap,
         )
 
-        # 阶段二：工位滚动消费任务队列
+        # 阶段二：工位滚动消费任务队列，主线程驱动进度面板
         job_queue: queue.Queue = queue.Queue()
         for item in all_jobs:
             job_queue.put(item)
 
-        bar = tqdm(total=len(all_jobs), desc=f"课程[{course.name}]", unit="视频")
-        try:
+        dashboard = Dashboard(course.name, total_jobs=len(all_jobs), slot_count=workers)
+        with DashboardLogger() as panel:
             with ThreadPoolExecutor(max_workers=workers) as pool:
                 futures = [
-                    pool.submit(self._slot_worker, course, job_queue, slot, bar)
+                    pool.submit(self._slot_worker, course, job_queue, slot, dashboard)
                     for slot in range(workers)
                 ]
-                for f in futures:
-                    f.result()
-        finally:
-            bar.close()
+                while not all(f.done() for f in futures):
+                    panel.update(dashboard.render())
+                    time.sleep(0.5)
 
-    def _slot_worker(self, course: Course, job_queue: queue.Queue, slot: int, bar: tqdm) -> None:
+    def _slot_worker(self, course: Course, job_queue: queue.Queue, slot: int,
+                     dashboard: Dashboard) -> None:
         """一个工位：领任务 -> 刷 -> 歇 10s -> 领下一个，直到队列空。"""
         first_job = True
         while True:
@@ -153,23 +153,26 @@ class Runner:
                 time.sleep(self.config.slot_gap)
             first_job = False
 
-            logger.info(
-                "[工位{}] 开始: {} (章节{})",
-                slot + 1, job.title or job.objectid, chapter.index,
-            )
-            result = self._process_with_retry(course, job)
+            title = job.title or job.objectid
+            logger.info("[工位{}] 开始: {} (章节{})", slot + 1, title, chapter.index)
+            dashboard.assign(slot, title, chapter.index)
+
+            def on_progress(play_seconds: int, total_seconds: int, _slot: int = slot) -> None:
+                dashboard.progress(_slot, play_seconds, total_seconds)
+
+            result = self._process_with_retry(course, job, on_progress)
+            dashboard.release(slot, result.value)
             with self._stats_lock:
                 self.stats.add(result)
-            bar.update(1)
-            logger.info("[工位{}] {}: {}", slot + 1, job.title or job.objectid, result.value)
+            logger.info("[工位{}] {}: {}", slot + 1, title, result.value)
 
     # ------------------------------------------------------------------ 重试
 
-    def _process_with_retry(self, course: Course, job: Job) -> StudyResult:
+    def _process_with_retry(self, course: Course, job: Job, progress_cb=None) -> StudyResult:
         """单个任务点处理 + 重试。"""
         result = StudyResult.FAILED
         for attempt in range(1, self.config.max_retries + 1):
-            result = self.study_api.process_job(course, job)
+            result = self.study_api.process_job(course, job, progress_cb)
             if result not in RETRYABLE_RESULTS:
                 return result
             if attempt < self.config.max_retries:

@@ -88,7 +88,7 @@ class App:
         group_opt = ttk.LabelFrame(left, text=" 选项 ", padding=6)
         group_opt.pack(fill=tk.X, pady=(8, 0))
         ttk.Label(group_opt, text="同时刷几个视频").grid(row=0, column=0, sticky="w")
-        self.conc_var = tk.StringVar(value="2")
+        self.conc_var = tk.StringVar(value="1")
         self.spin_conc = ttk.Spinbox(
             group_opt, from_=1, to=3, width=5, textvariable=self.conc_var,
         )
@@ -129,7 +129,7 @@ class App:
         self.slots_frame.pack(fill=tk.X)
         self.slot_bars: list[ttk.Progressbar] = []
         self.slot_labels: list[ttk.Label] = []
-        self._rebuild_slots(2)
+        self._rebuild_slots(1)
         self.label_summary = ttk.Label(group_progress, text="尚未开始")
         self.label_summary.pack(anchor="w")
 
@@ -185,6 +185,7 @@ class App:
         self.entry_user.insert(0, config.username)
         self.entry_pass.insert(0, config.password)
         self.conc_var.set(str(config.concurrency))
+        self._rebuild_slots(max(1, config.concurrency))
         self.spin_speed.delete(0, tk.END)
         self.spin_speed.insert(0, str(config.speed))
 

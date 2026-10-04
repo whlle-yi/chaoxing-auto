@@ -32,13 +32,21 @@ def decode_course_list(html: str) -> list[Course]:
             m = re.search(r"cpi=(\d+)", str(link["href"]))
             if m:
                 cpi = m.group(1)
+        # 课程名优先取 span.course-name（带 title 属性），旧版页面回退到 div.title/text
+        name = ""
+        name_span = div.select_one("span.course-name")
+        if name_span:
+            name = (name_span.get("title") or name_span.get_text(strip=True)).strip()
+        if not name:
+            name = div.get("title", "").strip() or div.get_text(" ", strip=True)[:50]
+        teacher_el = div.select_one("p.margint10")
         courses.append(
             Course(
                 course_id=course_id,
                 clazz_id=clazz_id,
                 cpi=cpi,
-                name=div.get("title", "").strip() or div.get_text(" ", strip=True)[:50],
-                teacher=div.get("teacher", "").strip(),
+                name=name,
+                teacher=(teacher_el.get("title", "").strip() if teacher_el else ""),
             )
         )
     return courses

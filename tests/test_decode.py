@@ -10,10 +10,10 @@ COURSE_LIST_HTML = """
 <div class="course">
     <input type="hidden" name="courseId" value="200001">
     <input type="hidden" name="clazzId" value="300001">
-    <a href="https://mooc2-ans.chaoxing.com/mycourse/stu?cpi=82274641&mooc2=1" title="高等数学">
-        <h3>高等数学</h3>
+    <a href="https://mooc1.chaoxing.com/visit/stucoursemiddle?courseid=200001&clazzid=300001&cpi=82274641&ismooc2=1" target="_blank">
+        <span class="course-name" title="高等数学">高等数学</span>
     </a>
-    <div class="teacher">张老师</div>
+    <p class="margint10" title="张老师">张老师</p>
 </div>
 <div class="course">
     <input type="hidden" name="courseId" value="200002">

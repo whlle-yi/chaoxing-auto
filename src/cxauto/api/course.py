@@ -62,7 +62,8 @@ class CourseAPI:
         courses = list(unique.values())
 
         if name_filter:
-            courses = [c for c in courses if c.name in name_filter]
+            # 子串匹配：课程名可能带学期/学校后缀，按精确名过滤容易漏
+            courses = [c for c in courses if any(f in c.name for f in name_filter)]
         logger.info("共获取 {} 门课程", len(courses))
         return courses
 

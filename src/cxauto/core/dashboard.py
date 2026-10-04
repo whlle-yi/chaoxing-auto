@@ -160,43 +160,21 @@ class Dashboard:
 
 
 class DashboardLogger:
-    """rich.Live 的包装。
+    """事件快照输出器。
 
-    只有在真正的交互式终端里才启动原地动画（旧版控制台 / 重定向输出画不了，
-    会堆出一帧帧残影），否则降级：由调用方定期输出单行文字进度。
+    不做原地动画（动画依赖光标回退，在 ZCode 输出窗格等伪终端环境会堆出残影），
+    改为在关键时刻（视频开始/结束）打印一帧完整面板快照。
     """
 
     def __init__(self) -> None:
-        import sys
-
-        self._live = None
-        self._live_factory = None
         try:
             from rich.console import Console
-            from rich.live import Live
 
-            console = Console()
-            if sys.stdout.isatty() and not console.legacy_windows:
-                self._live_factory = lambda: Live(refresh_per_second=2, transient=False)
+            self._console = Console()
         except ImportError:
-            pass
+            self._console = None
 
-    @property
-    def active(self) -> bool:
-        """是否处于原地动画模式。"""
-        return self._live is not None
-
-    def __enter__(self):
-        if self._live_factory is not None:
-            self._live = self._live_factory()
-            self._live.__enter__()
-        return self
-
-    def update(self, renderable) -> None:
-        if self._live is not None and renderable is not None:
-            self._live.update(renderable)
-
-    def __exit__(self, *args) -> None:
-        if self._live is not None:
-            self._live.__exit__(*args)
-            self._live = None
+    def snapshot(self, renderable) -> None:
+        """打印一帧面板快照（事件触发，低频）。"""
+        if self._console is not None and renderable is not None:
+            self._console.print(renderable)

@@ -129,23 +129,23 @@ class Runner:
             job_queue.put(item)
 
         dashboard = Dashboard(course.name, total_jobs=len(all_jobs), slot_count=workers)
-        with DashboardLogger() as panel:
-            with ThreadPoolExecutor(max_workers=workers) as pool:
-                futures = [
-                    pool.submit(self._slot_worker, course, job_queue, slot, dashboard)
-                    for slot in range(workers)
-                ]
-                # 交互终端：原地动画面板；否则每 30s 打一行文字进度
-                last_status = 0.0
-                while not all(f.done() for f in futures):
-                    panel.update(dashboard.render())
-                    if not panel.active and time.monotonic() - last_status >= 30:
-                        logger.info("进度 | {}", dashboard.status_line())
-                        last_status = time.monotonic()
-                    time.sleep(0.5)
+        panel = DashboardLogger()
+        panel.snapshot(dashboard.render())
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            futures = [
+                pool.submit(self._slot_worker, course, job_queue, slot, dashboard, panel)
+                for slot in range(workers)
+            ]
+            # 非动画环境：每 30s 打一行文字进度直到全部完成
+            last_status = time.monotonic()
+            while not all(f.done() for f in futures):
+                if time.monotonic() - last_status >= 30:
+                    logger.info("进度 | {}", dashboard.status_line())
+                    last_status = time.monotonic()
+                time.sleep(0.5)
 
     def _slot_worker(self, course: Course, job_queue: queue.Queue, slot: int,
-                     dashboard: Dashboard) -> None:
+                     dashboard: Dashboard, panel: DashboardLogger) -> None:
         """一个工位：领任务 -> 刷 -> 歇 10s -> 领下一个，直到队列空。"""
         first_job = True
         while True:
@@ -161,12 +161,14 @@ class Runner:
             title = job.title or job.objectid
             logger.info("[工位{}] 开始: {} ({})", slot + 1, title, chapter.title)
             dashboard.assign(slot, title, chapter.title)
+            panel.snapshot(dashboard.render())
 
             def on_progress(play_seconds: int, total_seconds: int, _slot: int = slot) -> None:
                 dashboard.progress(_slot, play_seconds, total_seconds)
 
             result = self._process_with_retry(course, job, on_progress)
             dashboard.release(slot, result.value)
+            panel.snapshot(dashboard.render())
             with self._stats_lock:
                 self.stats.add(result)
             logger.info("[工位{}] {}: {}", slot + 1, title, result.value)

@@ -38,6 +38,8 @@ class Config:
     concurrency: int = 1
     # 工位补位间隔：一个视频刷完后，等多少秒再取下一个
     slot_gap: float = 10.0
+    # 原地动画面板（仅真终端可用；默认用事件快照，任何环境不残影）
+    live_dashboard: bool = False
     cookie_file: Path = Path("cookies.txt")
     log_file: Path = Path("logs/cxauto.log")
     log_level: str = "INFO"
@@ -80,6 +82,7 @@ class Config:
             retry_interval=section.getfloat("retry_interval", fallback=2.0),
             notopen_action=section.get("notopen_action", fallback="skip").strip().lower(),
             concurrency=section.getint("concurrency", fallback=1),
+            slot_gap=section.getfloat("slot_gap", fallback=10.0),
             cookie_file=Path(section.get("cookie_file", fallback="cookies.txt").strip()),
             log_file=Path(section.get("log_file", fallback="logs/cxauto.log").strip()),
             log_level=section.get("log_level", fallback="INFO").strip().upper(),

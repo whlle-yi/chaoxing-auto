@@ -129,23 +129,43 @@ class Runner:
             job_queue.put(item)
 
         dashboard = Dashboard(course.name, total_jobs=len(all_jobs), slot_count=workers)
-        panel = DashboardLogger()
-        panel.snapshot(dashboard.render())
-        with ThreadPoolExecutor(max_workers=workers) as pool:
-            futures = [
-                pool.submit(self._slot_worker, course, job_queue, slot, dashboard, panel)
-                for slot in range(workers)
-            ]
-            # 非动画环境：每 30s 打一行文字进度直到全部完成
-            last_status = time.monotonic()
-            while not all(f.done() for f in futures):
-                if time.monotonic() - last_status >= 30:
-                    logger.info("进度 | {}", dashboard.status_line())
-                    last_status = time.monotonic()
-                time.sleep(0.5)
+        panel = None if self.config.live_dashboard else DashboardLogger()
+        if panel:
+            panel.snapshot(dashboard.render())
+
+        if self.config.live_dashboard:
+            # 真终端里的原地动画模式（--live 开启）。
+            # redirect_stdout 让日志行出现在面板上方而不是打乱重画坐标
+            from rich.live import Live
+
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                futures = [
+                    pool.submit(self._slot_worker, course, job_queue, slot, dashboard, None)
+                    for slot in range(workers)
+                ]
+                with Live(
+                    dashboard.render(), refresh_per_second=2,
+                    redirect_stdout=True, redirect_stderr=True,
+                ) as live:
+                    while not all(f.done() for f in futures):
+                        live.update(dashboard.render())
+                        time.sleep(0.5)
+        else:
+            # 事件快照模式（默认）：关键节点打一帧 + 每 30s 一行文字进度
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                futures = [
+                    pool.submit(self._slot_worker, course, job_queue, slot, dashboard, panel)
+                    for slot in range(workers)
+                ]
+                last_status = time.monotonic()
+                while not all(f.done() for f in futures):
+                    if time.monotonic() - last_status >= 30:
+                        logger.info("进度 | {}", dashboard.status_line())
+                        last_status = time.monotonic()
+                    time.sleep(0.5)
 
     def _slot_worker(self, course: Course, job_queue: queue.Queue, slot: int,
-                     dashboard: Dashboard, panel: DashboardLogger) -> None:
+                     dashboard: Dashboard, panel: DashboardLogger | None) -> None:
         """一个工位：领任务 -> 刷 -> 歇 10s -> 领下一个，直到队列空。"""
         first_job = True
         while True:
@@ -161,7 +181,8 @@ class Runner:
             title = job.title or job.objectid
             logger.info("[工位{}] 开始: {} ({})", slot + 1, title, chapter.title)
             dashboard.assign(slot, title, chapter.title)
-            panel.snapshot(dashboard.render())
+            if panel:
+                panel.snapshot(dashboard.render())
 
             def on_progress(play_seconds: int, total_seconds: int, _slot: int = slot) -> None:
                 dashboard.progress(_slot, play_seconds, total_seconds)

@@ -91,15 +91,15 @@ class App:
         self.conc_var = tk.StringVar(value="2")
         self.spin_conc = ttk.Spinbox(
             group_opt, from_=1, to=3, width=5, textvariable=self.conc_var,
-            command=self._on_conc_change,
         )
-        self.conc_var.trace_add("write", lambda *_: self._on_conc_change())
         self.spin_conc.grid(row=0, column=1, sticky="e", pady=(2, 4))
         ttk.Label(group_opt, text="视频倍速 (1.0~2.0)").grid(row=1, column=0, sticky="w")
         self.spin_speed = ttk.Spinbox(group_opt, from_=1.0, to=2.0, increment=0.5, width=5)
         self.spin_speed.set(1.0)
         self.spin_speed.grid(row=1, column=1, sticky="e")
 
+        self.btn_save = ttk.Button(left, text="保存配置（修改后点这里才生效）", command=self.on_save)
+        self.btn_save.pack(fill=tk.X, pady=(12, 4))
         self.btn_login = ttk.Button(left, text="① 登录并获取课程列表", command=self.on_login)
         self.btn_login.pack(fill=tk.X, pady=(12, 4))
         self.btn_start = ttk.Button(left, text="② 开始刷课", command=self.on_start, state=tk.DISABLED)
@@ -155,15 +155,25 @@ class App:
             self.slot_labels.append(label)
             self.slot_bars.append(bar)
 
-    def _on_conc_change(self) -> None:
-        """「同时刷几个视频」变化时实时生效（刷课运行中也会增减工位）。"""
-        if not (self.runner and self.worker_thread and self.worker_thread.is_alive()):
-            return
+    def on_save(self) -> None:
+        """保存配置：写入 config.ini；若正在刷课，并行数/倍速立即生效。"""
         try:
-            count = max(1, min(3, int(float(self.conc_var.get()))))
-        except ValueError:
+            saved = Config.from_ini(CONFIG_PATH)
+        except Exception:  # noqa: BLE001
+            saved = Config(username="x", password="x")
+        try:
+            config = self._save_form_to_config(saved.course_list)
+        except Exception as e:  # noqa: BLE001
+            messagebox.showwarning("提示", str(e))
             return
-        self.runner.set_concurrency(count)
+        # 刷课中：并行数与倍速热更新；其余项在下一次「开始刷课」时读取
+        if self.runner and self.worker_thread and self.worker_thread.is_alive():
+            self.runner.apply_live_settings(
+                concurrency=config.concurrency, speed=config.speed,
+            )
+            self.label_state.config(text="状态：配置已保存并实时生效")
+        else:
+            self.label_state.config(text="状态：配置已保存")
 
     def _load_config_to_form(self) -> None:
         if not CONFIG_PATH.exists():

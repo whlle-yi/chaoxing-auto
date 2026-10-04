@@ -69,6 +69,15 @@ class Runner:
         self._next_slot = 0
         self._run_ctx: tuple | None = None  # (course, job_queue, dashboard, panel)
 
+    def apply_live_settings(self, concurrency: int | None = None,
+                            speed: float | None = None) -> None:
+        """刷课运行中热更新设置（GUI 的「保存配置」按钮调用）。"""
+        if concurrency is not None:
+            self.set_concurrency(concurrency)
+        if speed is not None:
+            self.study_api.speed = min(2.0, max(1.0, speed))
+            logger.info("倍速调整为 {}x", self.study_api.speed)
+
     def set_concurrency(self, count: int) -> None:
         """运行中调整并行工位数（GUI 的并行数设置实时生效）。
 

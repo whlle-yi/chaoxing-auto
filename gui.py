@@ -88,8 +88,12 @@ class App:
         group_opt = ttk.LabelFrame(left, text=" 选项 ", padding=6)
         group_opt.pack(fill=tk.X, pady=(8, 0))
         ttk.Label(group_opt, text="同时刷几个视频").grid(row=0, column=0, sticky="w")
-        self.spin_conc = ttk.Spinbox(group_opt, from_=1, to=3, width=5)
-        self.spin_conc.set(2)
+        self.conc_var = tk.StringVar(value="2")
+        self.spin_conc = ttk.Spinbox(
+            group_opt, from_=1, to=3, width=5, textvariable=self.conc_var,
+            command=self._on_conc_change,
+        )
+        self.conc_var.trace_add("write", lambda *_: self._on_conc_change())
         self.spin_conc.grid(row=0, column=1, sticky="e", pady=(2, 4))
         ttk.Label(group_opt, text="视频倍速 (1.0~2.0)").grid(row=1, column=0, sticky="w")
         self.spin_speed = ttk.Spinbox(group_opt, from_=1.0, to=2.0, increment=0.5, width=5)
@@ -151,6 +155,16 @@ class App:
             self.slot_labels.append(label)
             self.slot_bars.append(bar)
 
+    def _on_conc_change(self) -> None:
+        """「同时刷几个视频」变化时实时生效（刷课运行中也会增减工位）。"""
+        if not (self.runner and self.worker_thread and self.worker_thread.is_alive()):
+            return
+        try:
+            count = max(1, min(3, int(float(self.conc_var.get()))))
+        except ValueError:
+            return
+        self.runner.set_concurrency(count)
+
     def _load_config_to_form(self) -> None:
         if not CONFIG_PATH.exists():
             return
@@ -160,8 +174,7 @@ class App:
             return
         self.entry_user.insert(0, config.username)
         self.entry_pass.insert(0, config.password)
-        self.spin_conc.delete(0, tk.END)
-        self.spin_conc.insert(0, str(config.concurrency))
+        self.conc_var.set(str(config.concurrency))
         self.spin_speed.delete(0, tk.END)
         self.spin_speed.insert(0, str(config.speed))
 
@@ -171,7 +184,7 @@ class App:
         password = self.entry_pass.get().strip()
         if not username or not password:
             raise ValueError("请先填写账号和密码")
-        concurrency = max(1, min(3, int(float(self.spin_conc.get()))))
+        concurrency = max(1, min(3, int(float(self.conc_var.get()))))
         speed = min(2.0, max(1.0, float(self.spin_speed.get())))
 
         config = Config(
@@ -297,16 +310,18 @@ class App:
     def _poll_progress(self) -> None:
         dashboard = self.runner.dashboard if self.runner else None
         if dashboard is not None:
-            for i, slot in enumerate(dashboard.slots):
-                if i >= len(self.slot_bars):
-                    break
+            slot_nums = sorted(dashboard.slots)
+            if len(slot_nums) != len(self.slot_bars):
+                self._rebuild_slots(len(slot_nums))
+            for i, num in enumerate(slot_nums):
+                slot = dashboard.slots[num]
                 if slot.status == "空闲":
-                    self.slot_labels[i].config(text=f"工位{i + 1}：待机")
+                    self.slot_labels[i].config(text=f"工位{num}：待机")
                     self.slot_bars[i]["value"] = 0
                 else:
                     pct = (slot.play_seconds / slot.total_seconds * 100) if slot.total_seconds else 0
                     self.slot_labels[i].config(
-                        text=f"工位{i + 1}：{slot.chapter_label} {slot.title} "
+                        text=f"工位{num}：{slot.chapter_label} {slot.title} "
                              f"{slot.play_seconds}s / {slot.total_seconds}s"
                     )
                     self.slot_bars[i]["value"] = pct

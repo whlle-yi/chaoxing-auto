@@ -49,7 +49,10 @@ class Dashboard:
         self.failed = 0
         self.skipped = 0
         self.started_at = time.monotonic()
-        self.slots = [SlotState(slot=i + 1) for i in range(slot_count)]
+        # 工位按编号动态登记（运行中调大并行数会新增工位）
+        self.slots: dict[int, SlotState] = {
+            i + 1: SlotState(slot=i + 1) for i in range(slot_count)
+        }
         self._lock = threading.Lock()
 
     # ------------------------------------------------------------------ 状态更新（工位线程调用）
@@ -57,6 +60,8 @@ class Dashboard:
     def assign(self, slot: int, title: str, chapter_label: str) -> None:
         """工位领取了一个新视频。"""
         with self._lock:
+            if slot not in self.slots:
+                self.slots[slot] = SlotState(slot=slot)
             self.queue_remaining -= 1
             s = self.slots[slot]
             s.title = title
@@ -71,6 +76,17 @@ class Dashboard:
             s = self.slots[slot]
             s.play_seconds = play_seconds
             s.total_seconds = total_seconds
+
+    def retire_slot(self, slot: int) -> None:
+        """工位被裁撤（并行数下调）：复位显示但不计入任何统计。"""
+        with self._lock:
+            s = self.slots.get(slot)
+            if s:
+                s.status = "空闲"
+                s.title = ""
+                s.chapter_label = ""
+                s.play_seconds = 0
+                s.total_seconds = 0
 
     def release(self, slot: int, result_value: str) -> None:
         """工位完成当前视频并释放。"""
@@ -97,15 +113,13 @@ class Dashboard:
     def status_line(self) -> str:
         """单行文字进度（非动画环境下的降级输出）。"""
         with self._lock:
-            parts = [
-                f"工位{s.slot}: {s.title or '待补位'}"
-                + (
-                    f" {_fmt_seconds(s.play_seconds)}/{_fmt_seconds(s.total_seconds)}"
-                    if s.total_seconds
-                    else ""
-                )
-                for s in self.slots
-            ]
+            parts = []
+            for num in sorted(self.slots):
+                s = self.slots[num]
+                part = f"工位{num}: {s.title or '待补位'}"
+                if s.total_seconds:
+                    part += f" {_fmt_seconds(s.play_seconds)}/{_fmt_seconds(s.total_seconds)}"
+                parts.append(part)
             parts.append(
                 f"已完成{self.completed} 失败{self.failed} 排队{self.queue_remaining}"
             )
@@ -130,7 +144,8 @@ class Dashboard:
             table = Table.grid(padding=(0, 2))
             table.add_column(justify="right", style="bold")
             table.add_column()
-            for s in self.slots:
+            for num in sorted(self.slots):
+                s = self.slots[num]
                 if s.status == "空闲":
                     table.add_row(f"工位{s.slot}", Text("等待补位…", style="dim"))
                     continue

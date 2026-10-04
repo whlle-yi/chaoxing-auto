@@ -12,7 +12,6 @@ from __future__ import annotations
 import queue
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
 from loguru import logger
@@ -63,6 +62,29 @@ class Runner:
         self.dashboard: Dashboard | None = None
         # show_panel=False：终端侧不打印面板快照（GUI 模式由界面承担进度展示）
         self.show_panel = show_panel
+        # 动态并行：工位数可在运行中通过 set_concurrency 调整
+        self.target_workers = max(1, config.concurrency)
+        self._worker_threads: list[threading.Thread] = []
+        self._wlock = threading.Lock()
+        self._next_slot = 0
+        self._run_ctx: tuple | None = None  # (course, job_queue, dashboard, panel)
+
+    def set_concurrency(self, count: int) -> None:
+        """运行中调整并行工位数（GUI 的并行数设置实时生效）。
+
+        调大：立即补开新工位；调小：多出的工位在刷完当前视频后自行退出。
+        """
+        count = max(1, min(3, count))
+        self.target_workers = count
+        ctx = self._run_ctx
+        if ctx is None:
+            return
+        with self._wlock:
+            self._worker_threads = [t for t in self._worker_threads if t.is_alive()]
+            alive = len(self._worker_threads)
+        for _ in range(count - alive):
+            self._spawn_worker(*ctx)
+        logger.info("并行数调整为 {} 个工位", count)
 
     def run(self) -> Stats:
         """入口：登录并依次处理所有目标课程。"""
@@ -123,62 +145,96 @@ class Runner:
             logger.info("课程《{}》没有待刷的视频任务点", course.name)
             return
 
-        workers = max(1, min(self.config.concurrency, len(all_jobs)))
+        self.target_workers = min(self.target_workers, len(all_jobs))
         logger.info(
-            "任务队列：{} 个视频，{} 个工位同时刷（补位间隔 {}s）",
-            len(all_jobs), workers, self.config.slot_gap,
+            "任务队列：{} 个视频，{} 个工位同时刷（补位间隔 {}s，运行中可调整）",
+            len(all_jobs), self.target_workers, self.config.slot_gap,
         )
 
-        # 阶段二：工位滚动消费任务队列，主线程驱动进度面板
+        # 阶段二：工位滚动消费任务队列（工位数可运行中调整）
         job_queue: queue.Queue = queue.Queue()
         for item in all_jobs:
             job_queue.put(item)
 
-        dashboard = Dashboard(course.name, total_jobs=len(all_jobs), slot_count=workers)
+        self.target_workers = min(self.target_workers, len(all_jobs))
+        dashboard = Dashboard(course.name, total_jobs=len(all_jobs), slot_count=1)
         self.dashboard = dashboard
         panel = DashboardLogger() if (self.show_panel and not self.config.live_dashboard) else None
+        self._run_ctx = (course, job_queue, dashboard, panel)
         if panel:
             panel.snapshot(dashboard.render())
+
+        for _ in range(self.target_workers):
+            self._spawn_worker()
 
         if self.config.live_dashboard:
             # 真终端里的原地动画模式（--live 开启）。
             # redirect_stdout 让日志行出现在面板上方而不是打乱重画坐标
             from rich.live import Live
 
-            with ThreadPoolExecutor(max_workers=workers) as pool:
-                futures = [
-                    pool.submit(self._slot_worker, course, job_queue, slot, dashboard, None)
-                    for slot in range(workers)
-                ]
-                with Live(
-                    dashboard.render(), refresh_per_second=2,
-                    redirect_stdout=True, redirect_stderr=True,
-                ) as live:
-                    while not all(f.done() for f in futures):
-                        live.update(dashboard.render())
-                        time.sleep(0.5)
+            with Live(
+                dashboard.render(), refresh_per_second=2,
+                redirect_stdout=True, redirect_stderr=True,
+            ) as live:
+                while self._alive_workers() > 0:
+                    live.update(dashboard.render())
+                    time.sleep(0.5)
         else:
             # 事件快照模式（默认）：关键节点打一帧 + 每 30s 一行文字进度
-            with ThreadPoolExecutor(max_workers=workers) as pool:
-                futures = [
-                    pool.submit(self._slot_worker, course, job_queue, slot, dashboard, panel)
-                    for slot in range(workers)
-                ]
-                last_status = time.monotonic()
-                while not all(f.done() for f in futures):
-                    if time.monotonic() - last_status >= 30:
-                        logger.info("进度 | {}", dashboard.status_line())
-                        last_status = time.monotonic()
-                    time.sleep(0.5)
+            last_status = time.monotonic()
+            while self._alive_workers() > 0:
+                if time.monotonic() - last_status >= 30:
+                    logger.info("进度 | {}", dashboard.status_line())
+                    last_status = time.monotonic()
+                time.sleep(0.5)
+        self._run_ctx = None
 
-    def _slot_worker(self, course: Course, job_queue: queue.Queue, slot: int,
-                     dashboard: Dashboard, panel: DashboardLogger | None) -> None:
-        """一个工位：领任务 -> 刷 -> 歇 10s -> 领下一个，直到队列空。"""
+    # ------------------------------------------------------------------ 动态工位
+
+    def _alive_workers(self) -> int:
+        with self._wlock:
+            self._worker_threads = [t for t in self._worker_threads if t.is_alive()]
+            return len(self._worker_threads)
+
+    def _spawn_worker(self) -> None:
+        """补开一个工位线程（slot 编号在锁内分配，保证唯一）。"""
+        if self._run_ctx is None:
+            return
+        course, job_queue, dashboard, panel = self._run_ctx
+        with self._wlock:
+            self._next_slot += 1
+            slot = self._next_slot
+            t = threading.Thread(
+                target=self._slot_worker,
+                args=(course, job_queue, dashboard, panel, slot),
+                daemon=True,
+                name=f"cxauto-worker-{slot}",
+            )
+            self._worker_threads.append(t)
+        t.start()
+
+    def _slot_worker(self, course: Course, job_queue: queue.Queue,
+                     dashboard: Dashboard, panel: DashboardLogger | None, slot: int) -> None:
+        """一个工位：领任务 -> 刷 -> 歇 10s -> 领下一个，直到队列空或被裁撤。"""
+
+        def retire() -> None:
+            with self._wlock:
+                self._worker_threads = [
+                    t for t in self._worker_threads if t is not threading.current_thread()
+                ]
+
         first_job = True
         while not self.stop_event.is_set():
+            # 运行中调小并行数：多出的工位在安全点自行退出
+            if self._alive_workers() > self.target_workers:
+                logger.debug("[工位{}] 并行数下调，本工位退出", slot)
+                dashboard.retire_slot(slot)
+                retire()
+                return
             try:
                 chapter, job = job_queue.get_nowait()
             except queue.Empty:
+                retire()
                 return
             if not first_job:
                 # 补位间隔：上一个视频刚刷完，歇一下再开工，避免衔接过于整齐
@@ -186,7 +242,7 @@ class Runner:
             first_job = False
 
             title = job.title or job.objectid
-            logger.info("[工位{}] 开始: {} ({})", slot + 1, title, chapter.title)
+            logger.info("[工位{}] 开始: {} ({})", slot, title, chapter.title)
             dashboard.assign(slot, title, chapter.title)
             if panel:
                 panel.snapshot(dashboard.render())

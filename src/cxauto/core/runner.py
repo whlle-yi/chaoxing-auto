@@ -154,8 +154,8 @@ class Runner:
             first_job = False
 
             title = job.title or job.objectid
-            logger.info("[工位{}] 开始: {} (章节{})", slot + 1, title, chapter.index)
-            dashboard.assign(slot, title, chapter.index)
+            logger.info("[工位{}] 开始: {} ({})", slot + 1, title, chapter.title)
+            dashboard.assign(slot, title, chapter.title)
 
             def on_progress(play_seconds: int, total_seconds: int, _slot: int = slot) -> None:
                 dashboard.progress(_slot, play_seconds, total_seconds)

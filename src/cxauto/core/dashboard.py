@@ -28,10 +28,10 @@ class SlotState:
 
     slot: int
     title: str = ""
-    chapter: int = 0
+    chapter_label: str = ""  # 章节「1.1 标题」形式，与学习通页面一致
     play_seconds: int = 0
     total_seconds: int = 0
-    status: str = "空闲"  # 空闲 / 播放中 / 风控重试
+    status: str = "空闲"  # 空闲 / 播放中
 
 
 class Dashboard:
@@ -54,13 +54,13 @@ class Dashboard:
 
     # ------------------------------------------------------------------ 状态更新（工位线程调用）
 
-    def assign(self, slot: int, title: str, chapter: int) -> None:
+    def assign(self, slot: int, title: str, chapter_label: str) -> None:
         """工位领取了一个新视频。"""
         with self._lock:
             self.queue_remaining -= 1
             s = self.slots[slot]
             s.title = title
-            s.chapter = chapter
+            s.chapter_label = chapter_label
             s.play_seconds = 0
             s.total_seconds = 0
             s.status = "播放中"
@@ -78,7 +78,7 @@ class Dashboard:
             s = self.slots[slot]
             s.status = "空闲"
             s.title = ""
-            s.chapter = 0
+            s.chapter_label = ""
             s.play_seconds = 0
             s.total_seconds = 0
             if result_value == "completed":
@@ -126,11 +126,11 @@ class Dashboard:
                     time_text = (
                         f"{_fmt_seconds(s.play_seconds)} / {_fmt_seconds(s.total_seconds)}"
                     )
-                    detail = Text(f"{s.title} [章节{s.chapter}]  ", overflow="crop")
+                    detail = Text(f"{s.chapter_label}  {s.title}  ", overflow="crop")
                     detail.append(f"{bar} {pct}  ", style="cyan")
                     detail.append(time_text)
                 else:
-                    detail = Text(f"{s.title} [章节{s.chapter}]  初始化…", overflow="crop")
+                    detail = Text(f"{s.chapter_label}  {s.title}  初始化…", overflow="crop")
                 status_suffix = "" if s.status == "播放中" else f"  ⚠{s.status}"
                 detail.append(status_suffix, style="yellow")
                 table.add_row(f"工位{s.slot}", detail)

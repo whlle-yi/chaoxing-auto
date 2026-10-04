@@ -63,6 +63,18 @@ def decode_folder_list(html: str) -> list[tuple[str, str]]:
     return folders
 
 
+def clean_chapter_title(raw: str) -> str:
+    """把章节 div 的原始文本清洗成「1.1 标题」形式。
+
+    原始文本形如 ``1.1 国内外传统文化理论 1 1个待完成任务点``，去掉任务点计数等杂质。
+    """
+    text = raw.split("待完成任务点")[0]
+    text = re.sub(r"[\s\d]+$", "", text)
+    for marker in ("已完成", "任务点未解锁"):
+        text = text.replace(marker, "")
+    return re.sub(r"\s+", " ", text).strip()
+
+
 def decode_chapter_list(html: str) -> list[Chapter]:
     """解析章节列表页（``mycourse/studentcourse``）。
 
@@ -86,7 +98,7 @@ def decode_chapter_list(html: str) -> list[Chapter]:
                 Chapter(
                     index=index,
                     knowledge_id=knowledge_id,
-                    title=div.get_text(" ", strip=True)[:60],
+                    title=clean_chapter_title(div.get_text(" ", strip=True)),
                     job_count=job_count,
                     need_unlock="解锁" in tips_text,
                     has_finished="已完成" in tips_text,

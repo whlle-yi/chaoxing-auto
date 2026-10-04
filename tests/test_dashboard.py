@@ -17,7 +17,7 @@ class TestFmtSeconds:
 class TestDashboard:
     def test_assign_and_progress(self):
         d = Dashboard("测试课", total_jobs=3, slot_count=2)
-        d.assign(0, "a.mp4", 1)
+        d.assign(0, "a.mp4", "1.1 标题一")
         d.progress(0, 30, 100)
         slot = d.slots[0]
         assert slot.title == "a.mp4"
@@ -27,9 +27,9 @@ class TestDashboard:
 
     def test_release_counts(self):
         d = Dashboard("测试课", total_jobs=4, slot_count=2)
-        d.assign(0, "a.mp4", 1)
+        d.assign(0, "a.mp4", "1.1 标题一")
         d.release(0, "completed")
-        d.assign(1, "b.mp4", 2)
+        d.assign(1, "b.mp4", "1.2 标题二")
         d.release(1, "forbidden")
         assert d.completed == 1
         assert d.failed == 1
@@ -41,20 +41,20 @@ class TestDashboard:
         from rich.console import Console
 
         d = Dashboard("文化传统与现代文明", total_jobs=9, slot_count=2)
-        d.assign(0, "1293.flv", 8)
+        d.assign(0, "1293.flv", "3.2 科学的内涵随时代的转化")
         d.progress(0, 120, 600)
         panel = d.render()
         assert panel is not None
         console = Console(file=io.StringIO(), width=120, force_terminal=False)
         console.print(panel)
         text = console.file.getvalue()
-        assert "1293.flv" in text
+        assert "3.2 科学的内涵随时代的转化" in text and "1293.flv" in text
         assert "02:00 / 10:00" in text
         assert "排队中 8/9" in text
 
     def test_two_slots_independent(self):
         d = Dashboard("测试课", total_jobs=2, slot_count=2)
-        d.assign(0, "a.mp4", 1)
+        d.assign(0, "a.mp4", "1.1 标题一")
         d.progress(0, 10, 100)
         assert d.slots[1].status == "空闲"
         assert d.slots[0].status == "播放中"

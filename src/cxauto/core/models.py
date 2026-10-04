@@ -78,6 +78,9 @@ class Job:
     mid: str = ""
     # 视频类
     playtime: int = 0  # 毫秒，服务端记录的已看进度
+    att_duration: int = 0  # 服务端下发的累计观看时长（毫秒）
+    att_duration_enc: str = ""  # attDuration 的服务端校验码
+    face_capture_enc: str = ""  # 人脸抓拍校验（有值说明该视频要求人脸，无法自动完成）
     # isPassed 为 true 的任务点无需处理
     is_passed: bool = False
 
@@ -97,6 +100,7 @@ class Job:
         # 超星接口会根据 otherInfo 是否携带 courseId 改变 URL 拼接方式，统一去掉 & 之后的内容
         otherinfo = str(attachment.get("otherInfo") or "").split("&")[0]
         playtime_ms = attachment.get("playTime") or 0
+        att_duration = attachment.get("attDuration") or 0
         return cls(
             type=JobType.from_attachment(attachment),
             jobid=str(attachment.get("jobid") or ""),
@@ -108,6 +112,9 @@ class Job:
             aid=str(attachment.get("aid") or ""),
             mid=str(attachment.get("mid") or ""),
             playtime=int(playtime_ms) if playtime_ms else 0,
+            att_duration=int(att_duration) if att_duration else 0,
+            att_duration_enc=str(attachment.get("attDurationEnc") or ""),
+            face_capture_enc=str(attachment.get("videoFaceCaptureEnc") or ""),
             is_passed=bool(attachment.get("isPassed")),
         )
 

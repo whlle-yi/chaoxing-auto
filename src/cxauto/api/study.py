@@ -86,6 +86,9 @@ class StudyAPI:
                    isdrag: int, dtype: str = "Video", rt: str = "0.9") -> dict | None:
         """上报一次播放日志。
 
+        isdrag 取值：4 仅用于开局「直接上报看完」的秒过探测；常规心跳与收尾一律用 3
+        （与官方播放器一致；实测 isdrag=0 服务端不记账）。
+
         Returns:
             服务端 JSON（含 isPassed）；风控/异常时返回 None。
         """
@@ -110,6 +113,13 @@ class StudyAPI:
             "rt": rt,
             "_t": self.client.timestamp_ms(),
         }
+        # 服务端下发的校验字段必须原样回传，缺失会导致进度不被记账
+        if job.att_duration:
+            params["attDuration"] = job.att_duration
+        if job.att_duration_enc:
+            params["attDurationEnc"] = job.att_duration_enc
+        if job.face_capture_enc:
+            params["videoFaceCaptureEnc"] = job.face_capture_enc
         referer = AUDIO_REFERER if dtype == "Audio" else VIDEO_REFERER
         self._log_limiter.wait()
         try:
@@ -147,8 +157,13 @@ class StudyAPI:
         """完成一个视频/音频任务点。
 
         流程：取元信息 -> 先尝试一次「直接上报看完」（isdrag=4）秒过 ->
-        未过则进入心跳循环，playingTime 按 speed 倍速推进，随机 30~90s 上报一次。
+        未过则进入心跳循环：playingTime 按 speed 倍速推进，随机 30~90s 上报一次
+        （isdrag=3），**只有服务端返回 isPassed=true 才算完成**。
         """
+        if job.face_capture_enc:
+            logger.warning("该视频启用人脸抓拍，无法自动完成，跳过: {}", job.title)
+            return StudyResult.UNSUPPORTED
+
         try:
             status = self.get_video_status(job)
         except Exception as e:  # noqa: BLE001
@@ -161,8 +176,6 @@ class StudyAPI:
             return StudyResult.SKIPPED
 
         rt = self._rt_value(job)
-        # 服务端记录的播放进度（毫秒 -> 秒），支持断点续刷
-        start = max(job.playtime // 1000, status.get("playtime", 0) // 1000)
 
         # 第一步：尝试秒过 —— 直接上报「已看完」
         data = self._video_log(course, job, status, duration, isdrag=4, rt=rt)
@@ -173,7 +186,8 @@ class StudyAPI:
         # 第二步：心跳循环。视频时间按 speed 倍速流逝，真实时间原速流逝。
         # 视频任务偶尔以「音频」身份上报才能通过，因此最多尝试两轮（Video -> Audio）。
         dtype = "Video"
-        for attempt in range(2):
+        for _round in range(2):
+            start = max(job.playtime // 1000, status.get("playtime", 0) // 1000)
             play_time = float(min(start, duration))
             last_log_time = play_time
             wait_time = random.uniform(30, 90)
@@ -183,6 +197,7 @@ class StudyAPI:
                 job.title or job.objectid, duration, self.speed, int(play_time), dtype,
             )
             finished = False
+            final_misses = 0  # 播放到结尾后服务端仍未通过的重试次数
             while not finished:
                 if play_time < duration:
                     time.sleep(1)
@@ -192,20 +207,28 @@ class StudyAPI:
                     # 未到心跳间隔且未播完则继续等待
                     if play_time - last_log_time < wait_time and play_time < duration:
                         continue
-                # 到达随机心跳间隔或播放结束：上报一次
-                isdrag = 4 if play_time >= duration else 0
-                data = self._video_log(course, job, status, int(play_time), isdrag=isdrag, rt=rt)
+                # 到达随机心跳间隔或播放结束：上报一次（isdrag=3）
+                data = self._video_log(course, job, status, int(play_time), isdrag=3, rt=rt)
                 if data is None:
                     # 风控：稍等、尝试过验证码，然后刷新 dtoken 重来
                     self.client.random_sleep(2, 4)
                     if self._captcha.solve():
                         continue
                     break
-                if data.get("isPassed") or play_time >= duration:
+                if data.get("isPassed"):
                     finished = True
                     break
                 last_log_time = play_time
                 wait_time = random.uniform(30, 90)
+                if play_time >= duration:
+                    # 已到结尾但服务端未放行：稍等后重报，连续多次失败则放弃
+                    final_misses += 1
+                    logger.debug(
+                        "已到视频结尾，等待服务端放行（第 {} 次）", final_misses
+                    )
+                    if final_misses >= 8:
+                        break
+                    self.client.random_sleep(3, 6)
             if finished:
                 logger.success("[完成] {}", job.title or job.objectid)
                 return StudyResult.COMPLETED

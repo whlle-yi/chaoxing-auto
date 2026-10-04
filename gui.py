@@ -118,18 +118,14 @@ class App:
         scroll.pack(side=tk.RIGHT, fill=tk.Y)
         self.course_list.config(yscrollcommand=scroll.set)
 
-        # 右侧中部：工位进度条
+        # 右侧中部：工位进度条（行数跟随「同时刷几个视频」的设置）
         group_progress = ttk.LabelFrame(right, text=" 刷课进度 ", padding=6)
         group_progress.pack(fill=tk.X, pady=(8, 0))
+        self.slots_frame = ttk.Frame(group_progress)
+        self.slots_frame.pack(fill=tk.X)
         self.slot_bars: list[ttk.Progressbar] = []
         self.slot_labels: list[ttk.Label] = []
-        for i in range(3):
-            label = ttk.Label(group_progress, text=f"工位{i + 1}：待机")
-            label.pack(anchor="w")
-            bar = ttk.Progressbar(group_progress, maximum=100, length=300)
-            bar.pack(fill=tk.X, pady=(0, 6))
-            self.slot_labels.append(label)
-            self.slot_bars.append(bar)
+        self._rebuild_slots(2)
         self.label_summary = ttk.Label(group_progress, text="尚未开始")
         self.label_summary.pack(anchor="w")
 
@@ -140,6 +136,20 @@ class App:
         self.log_text.pack(fill=tk.BOTH, expand=True)
 
     # ------------------------------------------------------------------ 配置
+
+    def _rebuild_slots(self, count: int) -> None:
+        """按设置的并行数重建工位进度行。"""
+        for child in self.slots_frame.winfo_children():
+            child.destroy()
+        self.slot_bars = []
+        self.slot_labels = []
+        for i in range(count):
+            label = ttk.Label(self.slots_frame, text=f"工位{i + 1}：待机")
+            label.pack(anchor="w")
+            bar = ttk.Progressbar(self.slots_frame, maximum=100, length=300)
+            bar.pack(fill=tk.X, pady=(0, 6))
+            self.slot_labels.append(label)
+            self.slot_bars.append(bar)
 
     def _load_config_to_form(self) -> None:
         if not CONFIG_PATH.exists():
@@ -224,6 +234,9 @@ class App:
         except Exception as e:  # noqa: BLE001
             messagebox.showwarning("提示", str(e))
             return
+
+        # 进度行数与本次并行数保持一致
+        self._rebuild_slots(config.concurrency)
 
         def work():
             try:

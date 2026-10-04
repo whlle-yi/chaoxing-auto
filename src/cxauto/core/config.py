@@ -34,8 +34,10 @@ class Config:
     max_retries: int = 3
     retry_interval: float = 2.0
     notopen_action: str = "skip"
-    # 并行刷课的线程数（同时刷几个视频）。同一账号不建议超过 3
+    # 并行刷课的工位数（同时刷几个视频）。同一账号不建议超过 3
     concurrency: int = 1
+    # 工位补位间隔：一个视频刷完后，等多少秒再取下一个
+    slot_gap: float = 10.0
     cookie_file: Path = Path("cookies.txt")
     log_file: Path = Path("logs/cxauto.log")
     log_level: str = "INFO"

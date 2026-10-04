@@ -1,0 +1,8 @@
+requests>=2.31.0
+beautifulsoup4>=4.12.0
+pycryptodome>=3.20.0
+tqdm>=4.66.0
+loguru>=0.7.0
+
+# 可选：自动识别风控验证码（安装体积较大，按需安装）
+# ddddocr>=1.5.0

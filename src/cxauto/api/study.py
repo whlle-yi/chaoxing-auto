@@ -191,6 +191,11 @@ class StudyAPI:
         dtype = "Video"
         for _round in range(2):
             start = max(job.playtime // 1000, status.get("playtime", 0) // 1000)
+            if start >= duration and not job.is_passed:
+                # 进度被顶到结尾但任务未通过（如秒过探测留下的记录）：
+                # 服务端按累计观看时长放行，必须从头重刷补足
+                logger.info("服务端进度已在结尾但未通过，从头重刷: {}", job.title or job.objectid)
+                start = 0
             play_time = float(min(start, duration))
             last_log_time = play_time
             wait_time = random.uniform(30, 90)

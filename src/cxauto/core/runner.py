@@ -62,8 +62,8 @@ class Runner:
         self.dashboard: Dashboard | None = None
         # show_panel=False：终端侧不打印面板快照（GUI 模式由界面承担进度展示）
         self.show_panel = show_panel
-        # 动态并行：工位数可在运行中通过 set_concurrency 调整
-        self.target_workers = max(1, config.concurrency)
+        # 动态并行：工位数可在运行中通过 set_concurrency 调整（上限 3）
+        self.target_workers = max(1, min(3, config.concurrency))
         self._worker_threads: list[threading.Thread] = []
         self._wlock = threading.Lock()
         self._next_slot = 0

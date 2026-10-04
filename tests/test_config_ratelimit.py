@@ -69,6 +69,11 @@ notopen_action = stop
         path2 = self._write(tmp_path, "[common]\nusername=u\npassword=p\n")
         assert Config.from_ini(path2).concurrency == 1  # 默认串行
 
+    def test_concurrency_hard_capped_at_3(self, tmp_path):
+        """并发上限 3 在配置层强制，手写多大都没用。"""
+        path = self._write(tmp_path, "[common]\nusername=u\npassword=p\nconcurrency=10\n")
+        assert Config.from_ini(path).concurrency == 3
+
     def test_missing_file_raises(self, tmp_path):
         with pytest.raises(FileNotFoundError):
             Config.from_ini(tmp_path / "nope.ini")

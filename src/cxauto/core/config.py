@@ -47,6 +47,8 @@ class Config:
     def __post_init__(self) -> None:
         # 官方前端播放器最多 2 倍速，超速上报极易触发风控
         self.speed = min(2.0, max(1.0, self.speed))
+        # 并行工位数硬性上限 3：同一账号更高并发会显著提高风控风险
+        self.concurrency = min(3, max(1, self.concurrency))
 
     @classmethod
     def from_ini(cls, path: str | Path) -> "Config":

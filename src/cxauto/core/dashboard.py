@@ -97,6 +97,7 @@ class Dashboard:
     def render(self):
         """渲染为 rich 可渲染对象；rich 不可用时返回 None。"""
         try:
+            from rich.console import Group
             from rich.panel import Panel
             from rich.table import Table
             from rich.text import Text
@@ -134,7 +135,11 @@ class Dashboard:
                 detail.append(status_suffix, style="yellow")
                 table.add_row(f"工位{s.slot}", detail)
 
-        return Panel(table, title=f"cxauto · {self.course_name}", border_style="green")
+        return Panel(
+            Group(header, table),
+            title=f"cxauto · {self.course_name}",
+            border_style="green",
+        )
 
 
 class DashboardLogger:
